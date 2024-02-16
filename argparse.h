@@ -44,20 +44,23 @@
         (da)->items[(da)->count++] = (item);                                   \
     } while (0)
 
+// Argument types
 enum argument_type {
-    ARGUMENT_TYPE_VALUE,
-    ARGUMENT_TYPE_FLAG,
-    ARGUMENT_TYPE_POSITIONAL,
+    ARGUMENT_TYPE_VALUE,      // Argument with a value
+    ARGUMENT_TYPE_FLAG,       // Flag argument
+    ARGUMENT_TYPE_POSITIONAL, // Positional argument
 };
 
+// Argument options
 struct argparse_options {
-        char short_name;
-        char *long_name;
-        char *description;
-        enum argument_type type;
-        unsigned int required;
+        char short_name;         // Short name of the argument
+        char *long_name;         // Long name of the argument
+        char *description;       // Description of the argument
+        enum argument_type type; // Type of the argument
+        unsigned int required;   // Whether the argument is required
 };
 
+// Argument parser
 struct argparse_parser;
 
 struct argparse_parser *argparse_new(char *name, char *description,
@@ -97,6 +100,19 @@ struct argparse_parser {
         size_t capacity;
 };
 
+// Create a new argument parser
+//
+// Allocates memory for a new argument parser and initializes it with the given
+// name, description, and version. It also adds the default help and version
+// arguments.
+//
+// Arguments:
+// - name: name of the program
+// - description: description of the program
+// - version: version of the program
+//
+// Returns:
+// - a new argument parser
 struct argparse_parser *argparse_new(char *name, char *description,
                                      char *version) {
     struct argparse_parser *parser = malloc(sizeof(struct argparse_parser));
@@ -125,6 +141,13 @@ struct argparse_parser *argparse_new(char *name, char *description,
     return parser;
 }
 
+// Add an argument to the parser
+//
+// Adds a new argument to the parser with the given options.
+//
+// Arguments:
+// - parser: argument parser
+// - options: argument options
 void argparse_add_argument(struct argparse_parser *parser,
                            struct argparse_options options) {
     if (options.short_name == '\0' && options.long_name == NULL) {
@@ -146,6 +169,15 @@ void argparse_add_argument(struct argparse_parser *parser,
     arg_da_append(parser, arg);
 }
 
+// Parse the command line arguments
+//
+// Parses the command line arguments and sets the values of the arguments in the
+// parser.
+//
+// Arguments:
+// - parser: argument parser
+// - argc: number of command line arguments
+// - argv: command line arguments
 void argparse_parse(struct argparse_parser *parser, int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         char *name = argv[i];
@@ -246,6 +278,16 @@ void argparse_parse(struct argparse_parser *parser, int argc, char *argv[]) {
     }
 }
 
+// Get the value of an argument
+//
+// Returns the value of the argument with the given long name.
+//
+// Arguments:
+// - parser: argument parser
+// - long_name: long name of the argument
+//
+// Returns:
+// - value of the argument
 char *argparse_get_value(struct argparse_parser *parser, char *long_name) {
     for (size_t i = 0; i < parser->count; i++) {
         struct argument *item = &parser->items[i];
@@ -263,6 +305,16 @@ char *argparse_get_value(struct argparse_parser *parser, char *long_name) {
     return NULL;
 }
 
+// Get the value of a positional argument
+//
+// Returns the value of the positional argument with the given long name.
+//
+// Arguments:
+// - parser: argument parser
+// - long_name: long name of the argument
+//
+// Returns:
+// - value of the flag argument
 unsigned int argparse_get_flag(struct argparse_parser *parser,
                                char *long_name) {
     for (size_t i = 0; i < parser->count; i++) {
@@ -280,13 +332,21 @@ unsigned int argparse_get_flag(struct argparse_parser *parser,
     return 0;
 }
 
+// Show the help message
+//
+// Prints the help message for the argument parser.
+//
+// Arguments:
+// - parser: argument parser
 void argparse_print_help(struct argparse_parser *parser) {
     printf("usage: %s [options]", parser->name);
     for (size_t i = 0; i < parser->count; i++) {
         struct argument *item = &parser->items[i];
 
-        if (item->options.type == ARGUMENT_TYPE_VALUE && item->options.required == 1) {
-            printf(" -%c <%s>", item->options.short_name, item->options.long_name);
+        if (item->options.type == ARGUMENT_TYPE_VALUE &&
+            item->options.required == 1) {
+            printf(" -%c <%s>", item->options.short_name,
+                   item->options.long_name);
         }
     }
     for (size_t i = 0; i < parser->count; i++) {
@@ -333,10 +393,22 @@ void argparse_print_help(struct argparse_parser *parser) {
     }
 }
 
+// Show the version
+//
+// Prints the version of the program.
+//
+// Arguments:
+// - parser: argument parser
 void argparse_print_version(struct argparse_parser *parser) {
     printf("%s %s\n", parser->name, parser->version);
 }
 
+// Free the argument parser
+//
+// Frees the memory allocated for the argument parser.
+//
+// Arguments:
+// - parser: argument parser
 void argparse_free(struct argparse_parser *parser) {
     free(parser->items);
     free(parser);
