@@ -50,13 +50,20 @@ enum argument_type {
     ARGUMENT_TYPE_POSITIONAL,
 };
 
+struct argparse_options {
+        char short_name;
+        char *long_name;
+        char *description;
+        enum argument_type type;
+        unsigned int required;
+};
+
 struct argparse_parser;
 
 struct argparse_parser *argparse_new(char *name, char *description,
                                      char *version);
-void argparse_add_argument(struct argparse_parser *parser, char short_name,
-                           char *long_name, char *description,
-                           enum argument_type type);
+void argparse_add_argument(struct argparse_parser *parser,
+                           struct argparse_options options);
 void argparse_parse(struct argparse_parser *parser, int argc, char *argv[]);
 char *argparse_get_value(struct argparse_parser *parser, char *long_name);
 unsigned int argparse_get_flag(struct argparse_parser *parser, char *long_name);
@@ -76,10 +83,7 @@ void argparse_free(struct argparse_parser *parser);
 #include <string.h>
 
 struct argument {
-        char short_name;
-        char *long_name;
-        char *description;
-        enum argument_type type;
+        struct argparse_options options;
         char *value;
         unsigned int flag;
 };
@@ -104,22 +108,37 @@ struct argparse_parser *argparse_new(char *name, char *description,
     parser->count = 0;
     parser->capacity = 0;
 
-    argparse_add_argument(parser, 'v', "version", "print the program version",
-                          ARGUMENT_TYPE_FLAG);
-    argparse_add_argument(parser, 'h', "help", "print help menu",
-                          ARGUMENT_TYPE_FLAG);
+    argparse_add_argument(
+        parser,
+        (struct argparse_options){.short_name = 'v',
+                                  .long_name = "version",
+                                  .description = "print the program version",
+                                  .type = ARGUMENT_TYPE_FLAG,
+                                  .required = 0});
+    argparse_add_argument(parser, (struct argparse_options){
+                                      .short_name = 'h',
+                                      .long_name = "help",
+                                      .description = "print this help message",
+                                      .type = ARGUMENT_TYPE_FLAG,
+                                      .required = 0});
 
     return parser;
 }
 
-void argparse_add_argument(struct argparse_parser *parser, char short_name,
-                           char *long_name, char *description,
-                           enum argument_type type) {
+void argparse_add_argument(struct argparse_parser *parser,
+                           struct argparse_options options) {
+    if (options.short_name == '\0' && options.long_name == NULL) {
+        ARG_PANIC("short_name or long_name must be set");
+    }
+    if (options.type == ARGUMENT_TYPE_FLAG && options.required == 1) {
+        ARG_LOG_WARN("flag argument cannot be required");
+    }
+    if (options.type == ARGUMENT_TYPE_POSITIONAL && options.required == 0) {
+        ARG_LOG_WARN("positional argument must be required");
+    }
+
     struct argument arg = {
-        .short_name = short_name,
-        .long_name = long_name,
-        .description = description,
-        .type = type,
+        .options = options,
         .value = NULL,
         .flag = 0,
     };
@@ -147,10 +166,10 @@ void argparse_parse(struct argparse_parser *parser, int argc, char *argv[]) {
             for (size_t j = 0; j < parser->count; j++) {
                 struct argument *item = &parser->items[j];
 
-                if ((name[1] == '-' && item->long_name != NULL &&
-                     strcmp(name + 2, item->long_name) == 0) ||
-                    (name[1] != '-' && item->short_name != '\0' &&
-                     name[1] == item->short_name)) {
+                if ((name[1] == '-' && item->options.long_name != NULL &&
+                     strcmp(name + 2, item->options.long_name) == 0) ||
+                    (name[1] != '-' && item->options.short_name != '\0' &&
+                     name[1] == item->options.short_name)) {
                     arg = item;
                     break;
                 }
@@ -162,7 +181,7 @@ void argparse_parse(struct argparse_parser *parser, int argc, char *argv[]) {
                 exit(1);
             }
 
-            switch (arg->type) {
+            switch (arg->options.type) {
             case ARGUMENT_TYPE_FLAG: {
                 arg->flag = 1;
                 break;
@@ -189,7 +208,7 @@ void argparse_parse(struct argparse_parser *parser, int argc, char *argv[]) {
             for (size_t j = 0; j < parser->count; j++) {
                 struct argument *item = &parser->items[j];
 
-                if (item->type == ARGUMENT_TYPE_POSITIONAL &&
+                if (item->options.type == ARGUMENT_TYPE_POSITIONAL &&
                     item->value == NULL) {
                     arg = item;
                     break;
@@ -209,9 +228,18 @@ void argparse_parse(struct argparse_parser *parser, int argc, char *argv[]) {
     for (size_t i = 0; i < parser->count; i++) {
         struct argument *item = &parser->items[i];
 
-        if (item->type == ARGUMENT_TYPE_POSITIONAL && item->value == NULL) {
+        if (item->options.type == ARGUMENT_TYPE_POSITIONAL &&
+            item->value == NULL) {
             ARG_LOG_ERROR("missing value for positional argument: %s",
-                          item->long_name);
+                          item->options.long_name);
+            argparse_print_help(parser);
+            exit(1);
+        }
+
+        if (item->options.type == ARGUMENT_TYPE_VALUE &&
+            item->options.required == 1 && item->value == NULL) {
+            ARG_LOG_ERROR("missing required argument: --%s",
+                          item->options.long_name);
             argparse_print_help(parser);
             exit(1);
         }
@@ -222,10 +250,10 @@ char *argparse_get_value(struct argparse_parser *parser, char *long_name) {
     for (size_t i = 0; i < parser->count; i++) {
         struct argument *item = &parser->items[i];
 
-        if (item->long_name != NULL &&
-            strcmp(long_name, item->long_name) == 0) {
-            if (item->type != ARGUMENT_TYPE_VALUE &&
-                item->type != ARGUMENT_TYPE_POSITIONAL) {
+        if (item->options.long_name != NULL &&
+            strcmp(long_name, item->options.long_name) == 0) {
+            if (item->options.type != ARGUMENT_TYPE_VALUE &&
+                item->options.type != ARGUMENT_TYPE_POSITIONAL) {
                 ARG_LOG_WARN("argument is not a value: %s", long_name);
             }
             return item->value;
@@ -240,9 +268,9 @@ unsigned int argparse_get_flag(struct argparse_parser *parser,
     for (size_t i = 0; i < parser->count; i++) {
         struct argument *item = &parser->items[i];
 
-        if (item->long_name != NULL &&
-            strcmp(long_name, item->long_name) == 0) {
-            if (item->type != ARGUMENT_TYPE_FLAG) {
+        if (item->options.long_name != NULL &&
+            strcmp(long_name, item->options.long_name) == 0) {
+            if (item->options.type != ARGUMENT_TYPE_FLAG) {
                 ARG_LOG_WARN("argument is not a flag: %s", long_name);
             }
             return item->flag;
@@ -257,8 +285,15 @@ void argparse_print_help(struct argparse_parser *parser) {
     for (size_t i = 0; i < parser->count; i++) {
         struct argument *item = &parser->items[i];
 
-        if (item->type == ARGUMENT_TYPE_POSITIONAL) {
-            printf(" <%s>", item->long_name);
+        if (item->options.type == ARGUMENT_TYPE_VALUE && item->options.required == 1) {
+            printf(" -%c <%s>", item->options.short_name, item->options.long_name);
+        }
+    }
+    for (size_t i = 0; i < parser->count; i++) {
+        struct argument *item = &parser->items[i];
+
+        if (item->options.type == ARGUMENT_TYPE_POSITIONAL) {
+            printf(" <%s>", item->options.long_name);
         }
     }
     printf("\n");
@@ -269,22 +304,25 @@ void argparse_print_help(struct argparse_parser *parser) {
     for (size_t i = 0; i < parser->count; i++) {
         struct argument *item = &parser->items[i];
 
-        switch (item->type) {
+        switch (item->options.type) {
         case ARGUMENT_TYPE_POSITIONAL: {
-            printf("  %c, %s\n", item->short_name, item->long_name);
-            printf("      %s\n", item->description);
+            printf("  %c, %s\n", item->options.short_name,
+                   item->options.long_name);
+            printf("      %s\n", item->options.description);
             printf("\n");
             break;
         }
         case ARGUMENT_TYPE_FLAG: {
-            printf("  -%c, --%s\n", item->short_name, item->long_name);
-            printf("      %s\n", item->description);
+            printf("  -%c, --%s\n", item->options.short_name,
+                   item->options.long_name);
+            printf("      %s\n", item->options.description);
             printf("\n");
             break;
         }
         case ARGUMENT_TYPE_VALUE: {
-            printf("  -%c, --%s <value>\n", item->short_name, item->long_name);
-            printf("      %s\n", item->description);
+            printf("  -%c, --%s <value>\n", item->options.short_name,
+                   item->options.long_name);
+            printf("      %s\n", item->options.description);
             printf("\n");
             break;
         }
