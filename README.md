@@ -1,5 +1,7 @@
 # Argparse in C
 
+This merged into `ds.h` <https://github.com/alexjercan/ds.h>
+
 Simple argparse style library for C.
 
 For your projects you just need to copy paste the `argparse.h` file into your
